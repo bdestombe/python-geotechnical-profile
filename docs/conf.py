@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-
 import os
 
 
@@ -14,7 +12,18 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx.ext.todo',
     'sphinx.ext.viewcode',
-]
+    'sphinx.ext.autosectionlabel',
+    # 'nbsphinx',
+    'sphinx.ext.mathjax',
+    'sphinx.ext.intersphinx',
+    'IPython.sphinxext.ipython_directive',
+    'IPython.sphinxext.ipython_console_highlighting',
+    # 'matplotlib.sphinxext.mathmpl',
+    'matplotlib.sphinxext.only_directives',
+    'matplotlib.sphinxext.plot_directive',
+    # 'matplotlib.sphinxext.ipython_directive',
+    ]
+
 if os.getenv('SPELLCHECK'):
     extensions += 'sphinxcontrib.spelling',
     spelling_show_suggestions = True
@@ -22,23 +31,21 @@ if os.getenv('SPELLCHECK'):
 
 source_suffix = '.rst'
 master_doc = 'index'
-project = 'geotechnicalprofile'
+project = 'dtscalibration'
 year = '2018'
 author = 'Bas des Tombe'
 copyright = '{0}, {1}'.format(year, author)
-version = release = '0.1.0'
+version = release = '0.5.0'
 
 pygments_style = 'trac'
 templates_path = ['.']
 extlinks = {
-    'issue': ('https://github.com/bdestombe/python-geotechnical-profile/issues/%s', '#'),
-    'pr': ('https://github.com/bdestombe/python-geotechnical-profile/pull/%s', 'PR #'),
+    'issue': ('https://github.com/bdestombe/python-dts-calibration/issues/%s', '#'),
+    'pr': ('https://github.com/bdestombe/python-dts-calibration/pull/%s', 'PR #'),
 }
-# on_rtd is whether we are on readthedocs.org
-on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
+exclude_patterns = ['_build', '**.ipynb_checkpoints', 'Thumbs.db', '.DS_Store']
 
-if not on_rtd:  # only set the theme if we're building docs locally
-    html_theme = 'sphinx_rtd_theme'
+html_theme = 'nature'
 
 html_use_smartypants = True
 html_last_updated_fmt = '%b %d, %Y'
