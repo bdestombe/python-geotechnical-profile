@@ -1,0 +1,54 @@
+# This file exists so you can easily regenerate your project.
+#
+# `cookiepatcher` is a convenient shim around `cookiecutter`
+# for regenerating projects (it will generate a .cookiecutterrc
+# automatically for any template). To use it:
+#
+#    pip install cookiepatcher
+#    cookiepatcher gh:ionelmc/cookiecutter-pylibrary project-path
+#
+# See:
+#    https://pypi.python.org/pypi/cookiepatcher
+#
+# Alternatively, you can run:
+#
+#    cookiecutter --overwrite-if-exists --config-file=project-path/.cookiecutterrc gh:ionelmc/cookiecutter-pylibrary
+
+default_context:
+
+    _template:                 'gh:ionelmc/cookiecutter-pylibrary'
+    appveyor:                  'no'
+    c_extension_function:      'longest'
+    c_extension_module:        '_geotechnicalprofile'
+    c_extension_optional:      'no'
+    c_extension_support:       'no'
+    codacy:                    'no'
+    codeclimate:               'no'
+    codecov:                   'no'
+    command_line_interface:    'plain'
+    command_line_interface_bin_name: 'geotechnicalprofile'
+    coveralls:                 'no'
+    distribution_name:         'geotechnicalprofile'
+    email:                     'bdestombe@gmail.com'
+    full_name:                 'Bas des Tombe'
+    github_username:           'bdestombe'
+    landscape:                 'no'
+    license:                   'BSD 3-Clause License'
+    linter:                    'flake8'
+    package_name:              'geotechnicalprofile'
+    project_name:              'geotechnicalprofile'
+    project_short_description: 'Load, manage, and plot geotechnical data, including GEF and DTS measurements'
+    release_date:              'today'
+    repo_name:                 'python-geotechnical-profile'
+    requiresio:                'no'
+    scrutinizer:               'no'
+    sphinx_docs:               'yes'
+    sphinx_doctest:            'yes'
+    sphinx_theme:              'sphinx-rtd-theme'
+    test_matrix_configurator:  'no'
+    test_matrix_separate_coverage: 'no'
+    test_runner:               'pytest'
+    travis:                    'yes'
+    version:                   '0.1.0'
+    website:                   'https://github.com/bdestombe'
+    year:                      'now'
