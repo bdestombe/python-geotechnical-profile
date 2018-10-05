@@ -1,29 +1,33 @@
 # coding=utf-8
+from datetime import datetime as dt
 from itertools import cycle
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 
+from geotechnicalprofile.gef_helpers import fijnedeeltjes
 from geotechnicalprofile.gef_helpers import hydraulic_conductance
 from geotechnicalprofile.gef_helpers import hydraulic_resistance
 from geotechnicalprofile.gef_helpers import lithology
-from geotechnicalprofile.gef_helpers import fijnedeeltjes
 
 supported_version = [1, 1, 0]
 multiple_list = [
     'COLUMNINFO', 'COLUMNVOID', 'MEASUREMENTTEXT', 'MEASUREMENTVAR'
-]
+    ]
 dtyped = {
-    'default': [str],
-    'GEFID': [int],
-    'COLUMN': [int],
-    'LASTSCAN': [int],
-    'COLUMNINFO': [int, str, str, int],
-    'COLUMNVOID': [int, float],
+    'default':        [str],
+    'GEFID':          [int],
+    'COLUMN':         [int],
+    'LASTSCAN':       [int],
+    'STARTDATE':      [int],
+    'STARTTIME':      [int, int, float],
+    'COLUMNINFO':     [int, str, str, int],
+    'COLUMNVOID':     [int, float],
     'MEASUREMENTVAR': [int, float, str, str],
-    'XYID': [int, float, float, float, float],
-    'ZID': [int, float, float]
-}
+    'XYID':           [int, float, float, float, float],
+    'ZID':            [int, float, float]
+    }
 
 
 class DataStore(xr.Dataset):
@@ -90,40 +94,75 @@ def read_gef(fp):
             key_val(s, dtyped=dtyped, out=attrs)
 
         X = np.loadtxt(f)
+    del attrs['DATAFORMAT']
+    del attrs['OS']
 
     assert X.shape == (attrs['LASTSCAN'], attrs['COLUMN'])
+    del attrs['LASTSCAN']
+    del attrs['COLUMN']
 
     for col_info in attrs['COLUMNVOID']:
         mask = np.isclose(X[:, col_info[0] - 1], col_info[1])
         X[mask, col_info[0] - 1] = np.nan
+    del attrs['COLUMNVOID']
 
     attrs['x (m)'] = attrs['XYID'][1]
     attrs['y (m)'] = attrs['XYID'][2]
+    assert attrs['XYID'][0] == 31000  # ensure it is RDS
+    del attrs['XYID']
+
     attrs['maaiveld (m+NAP)'] = attrs['ZID'][1]
+    assert attrs['ZID'][0] == 31000  # ensure it is NAP
+    del attrs['ZID']
 
     for item in attrs['MEASUREMENTVAR']:
         key = item[3] + ' (' + item[2] + ')'
         attrs[key] = item[1]
 
-    labels = [item[2] + ' (' + item[1] + ')' for item in attrs['COLUMNINFO']]
+    del attrs['MEASUREMENTVAR']
 
-    hellingsmeter_aanwezig = 'gecorrigeerde diepte (m)' in labels
+    for item in attrs['MEASUREMENTTEXT']:
+        key = item[2] + ' (' + item[0] + ')'
+        attrs[key] = item[1]
+
+    del attrs['MEASUREMENTTEXT']
+
+    labels = [item[2] for item in attrs['COLUMNINFO']]
+    units = [item[1] for item in attrs['COLUMNINFO']]
+    del attrs['COLUMNINFO']
+
+    hellingsmeter_aanwezig = 'gecorrigeerde diepte' in labels
 
     if hellingsmeter_aanwezig:
-        diepte = 'gecorrigeerde diepte (m)'
+        diepte = 'gecorrigeerde diepte'
 
     else:
-        diepte = 'sondeerlengte (m)'
+        diepte = 'sondeerlengte'
 
     dim_col = labels.index(diepte)
-    dim_dat = attrs['ZID'][1] - X[:, dim_col]
-    dim_label = r'z (m+NAP)'
+    dim_coord = attrs['maaiveld (m+NAP)'] - X[:, dim_col]
+    coords = {
+        'z':     ('depth', dim_coord, {
+            'units':       'm+NAP',
+            'description': 'Depth w.r.t. reference level',
+            'methode':     diepte}),
+        'depth': ('depth', - X[:, dim_col], {
+            'units':       'm+maaiveld',
+            'description': 'Depth w.r.t. surface level',
+            'methode':     diepte})}
 
     data = {}
-    for label, x_item in zip(labels, X.T):
-        data[label] = (r'z (m+NAP)', x_item)
+    for label, unit, x_item in zip(labels, units, X.T):
+        data[label.lower()] = (r'depth', x_item, {
+            'units': unit})
 
-    ds = DataStore(data_vars=data, coords={dim_label: dim_dat}, attrs=attrs)
+    _date = attrs['STARTDATE'] + attrs['STARTTIME']
+    date = [int(item) for item in _date]
+    attrs['date'] = pd.to_datetime(dt(*date), utc=True)
+    del attrs['STARTDATE']
+    del attrs['STARTTIME']
+
+    ds = DataStore(data_vars=data, coords=coords, attrs=attrs)
 
     hydraulic_conductance(ds)
     hydraulic_resistance(ds)
@@ -153,7 +192,7 @@ def key_val(s, k=None, v=None, dtyped=None, out=None):
         try:
             s2_v = [dt(s2i) for dt, s2i in i]
 
-        except:
+        except ValueError:
             print(s2_k,
                   f". Interpreting {s2[1][:-2].split(sep=', ')} with {dtype}")
 

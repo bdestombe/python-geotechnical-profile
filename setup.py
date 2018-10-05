@@ -66,8 +66,19 @@ setup(
         # eg: 'keyword1', 'keyword2', 'keyword3',
     ],
     install_requires=[
+        'numpy',
+        'xarray',
+        'pyyaml',
+        'xmltodict',
+        'scipy',
+        'statsmodels',
+        'nbsphinx',
+        'dask',
+        'toolz',
+        'matplotlib',
+        'netCDF4'
         # eg: 'aspectlib==1.1.1', 'six>=1.7',
-    ],
+        ],
     extras_require={
         # eg:
         #   'rst': ['docutils>=0.11'],

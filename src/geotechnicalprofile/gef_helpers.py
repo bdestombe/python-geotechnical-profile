@@ -1,32 +1,41 @@
 # coding=utf-8
 import numpy as np
-from scipy.optimize import fsolve
 import xarray as xr
+from scipy.optimize import fsolve
+
+
+def check_unit(ds, label, unit):
+    assert ds[label].attrs['units'] == unit, 'not the correct unit'
+    pass
 
 
 def hydraulic_conductance(ds):
     # Horizontal
-    key = 'Kh (m per dag)'
-    f = 0.825
-    ds[key] = (('z (m+NAP)',), ds['Puntdruk (MPa)'] /
-               (f * np.exp(ds['Wrijvingsgetal (%)']) ** 3))  # m/d
+    check_unit(ds, 'puntdruk', 'MPa')
+    check_unit(ds, 'wrijvingsgetal', '%')
 
-    mask = ds['Wrijvingsgetal (%)'] > 2.
-    ds[key][mask] = ds['Puntdruk (MPa)'][mask] / (
-        f * np.exp(ds['Wrijvingsgetal (%)'][mask]))  # m/d
+    key = 'Kh'
+    f = 0.825
+    ds[key] = (('depth',),
+               ds['puntdruk'] / (f * np.exp(ds['wrijvingsgetal']) ** 3),
+               {'units': 'm per dag'})  # m/d
+
+    mask = ds['wrijvingsgetal'] > 2.
+    ds[key][mask] = ds['puntdruk'][mask] / (
+        f * np.exp(ds['wrijvingsgetal'][mask]))  # m/d
     ds[key][mask][ds[key][mask] < 1e-4] = 1e-4
 
 
 def hydraulic_resistance(ds):
-    key = 'Hydraulische weerstand (dag per 2cm)'
+    key = 'Hydraulische weerstand1'
 
-    z = ds['sondeerlengte (m)'].data
+    z = ds.depth.data
     dz = np.hstack((z[1:] - z[:-1], z[-1] - z[-2]))
 
     dz_formula = 0.02
 
-    colum_A = ds['Kh (m per dag)']
-    colum_K = np.zeros(ds['z (m+NAP)'].shape)
+    colum_A = ds['Kh']
+    colum_K = np.zeros(ds.depth.shape)
     mask = -xr.ufuncs.log10(colum_A) > 0
     colum_K[mask] = xr.ufuncs.log10(colum_A[mask] ** 1.6)
     colum_K[colum_K < -7.5] = -7.5
@@ -37,10 +46,10 @@ def hydraulic_resistance(ds):
 
     colum_K *= dz / dz_formula  # correct for measurement interval
 
-    ds[key] = (('z (m+NAP)',), colum_K)
+    ds[key] = (('depth',), colum_K, {'units': 'day/2cm'})
 
-    key2 = 'Rv weerstandslaag (dag per m)'
-    ds[key2] = (('z (m+NAP)',), 50 * colum_K)
+    key2 = 'Rv weerstandslaag2'
+    ds[key2] = (('depth',), 50 * colum_K, {'units': 'day/m'})
 
 
 def lithology(ds):
@@ -48,30 +57,30 @@ def lithology(ds):
     ds.attrs.update(lithologie_attrs=lithologie_attrs)
     key = 'Lithologie'
 
-    ds[key] = (('z (m+NAP)',), np.ones(ds['z (m+NAP)'].shape, dtype=int))
+    ds[key] = (('depth',), np.ones(ds.depth.shape, dtype=int))
 
-    mask = ds['Hydraulische weerstand (dag per 2cm)'] > 6.
+    mask = ds['Hydraulische weerstand1'] > 6.
     ds[key][mask] = 3
 
-    mask = xr.ufuncs.logical_and(ds['Hydraulische weerstand (dag per 2cm)'] > 0.,
-                                 ds['Hydraulische weerstand (dag per 2cm)'] < 6.)
+    mask = xr.ufuncs.logical_and(ds['Hydraulische weerstand1'] > 0.,
+                                 ds['Hydraulische weerstand1'] < 6.)
     ds[key][mask] = 2
 
 
 def veenindex(ds):
     key = 'Veenindex'
-    ds[key] = (('z (m+NAP)',), np.zeros(ds['z (m+NAP)'].shape))
+    ds[key] = (('depth',), np.zeros(ds.depth.shape), {'units': '-'})
 
-    mask = ds['Wrijvingsgetal (%)'] > 4.
-    ds[key][mask] = ds['Wrijvingsgetal (%)'][mask] ** 2
+    mask = ds['wrijvingsgetal'] > 4.
+    ds[key][mask] = ds['wrijvingsgetal'][mask] ** 2
 
 
 def fijnedeeltjes(ds):
-    key = 'Fijne deeltjes < 75 um (%)'
-    ds[key] = (('z (m+NAP)',), np.zeros(ds['z (m+NAP)'].shape))
+    key = 'Fijne deeltjes < 75 um'
+    ds[key] = (('depth',), np.zeros(ds.depth.shape), {'units': '%'})
 
-    Ic = ((3.47 - np.log10(ds['Puntdruk (MPa)'])) ** 2 +
-          (np.log10(ds['Wrijvingsgetal (%)']) + 1.22) ** 2) ** 0.5
+    Ic = ((3.47 - np.log10(ds['puntdruk'])) ** 2 +
+          (np.log10(ds['wrijvingsgetal']) + 1.22) ** 2) ** 0.5
 
     mask = np.logical_and(Ic > 1.31, Ic <= 2.5)
     ds[key][mask] = 42.0 * Ic[mask] - 55.0 + 10 * np.sin(
@@ -84,8 +93,8 @@ def fijnedeeltjes(ds):
     ds[key][mask] = 100.
 
     mask = np.logical_and(
-        np.logical_and(Ic > 1.31, Ic <= 2.36), ds['Wrijvingsgetal (%)'] < 0.6)
-    ds[key][mask] = 5 * ds['Wrijvingsgetal (%)'][mask]
+        np.logical_and(Ic > 1.31, Ic <= 2.36), ds['wrijvingsgetal'] < 0.6)
+    ds[key][mask] = 5 * ds['wrijvingsgetal'][mask]
 
 
 def estimate_wl_between(elevation, waterpressure, zlim):
