@@ -1,10 +1,12 @@
 # coding=utf-8
+import tempfile
 from datetime import datetime as dt
 from itertools import cycle
 
 import numpy as np
 import pandas as pd
 import xarray as xr
+import yaml
 
 from geotechnicalprofile.gef_helpers import fijnedeeltjes
 from geotechnicalprofile.gef_helpers import hydraulic_conductance
@@ -75,11 +77,121 @@ class DataStore(xr.Dataset):
         dtscalibration.open_datastore : Load (calibrated) measurements from netCDF-like file
         """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, geffile=None, **kwargs):
         super(DataStore, self).__init__(*args, **kwargs)
+
+        if '_geffile' not in self.attrs:
+            self.attrs['_geffile'] = yaml.dump(None)
+
+        self.geffile = geffile
+
+    # noinspection PyIncorrectDocstring
+    @property
+    def geffile(self):
+        """
+        returns the orional gef file
+
+        Parameters
+        ----------
+        geffile : dict
+            geffile are defined in a dictionary with its keywords of the names of the reference
+            temperature time series. Its values are lists of slice objects, where each slice object
+            is a stretch.
+        Returns
+        -------
+
+        """
+        assert hasattr(self, '_geffile'), 'first set the geffile'
+        return yaml.load(self.attrs['_geffile'])
+
+    @geffile.setter
+    def geffile(self, geffile):
+        with open(geffile, 'rb') as infile:
+            s = str(infile.readlines())
+
+        self.attrs['_geffile'] = yaml.dump(s)
+        pass
+
+    @geffile.deleter
+    def geffile(self):
+        self.geffile = None
+        pass
+
+    # noinspection PyIncorrectDocstring
+    @property
+    def geffilehandle(self):
+        """Returns a filehandle of the geffile"""
+        assert hasattr(self, '_geffile'), 'first set the geffile'
+        s = yaml.load(self.attrs['_geffile'])
+        fh = tempfile.TemporaryFile()
+        fh.write(s.encode())
+        fh.seek(0)
+        return fh
+
+    @geffilehandle.setter
+    def geffilehandle(self, geffile):
+        self.geffile = geffile
+
+    @geffile.deleter
+    def geffile(self):
+        del self.geffile
+
+    def add_dts(self, dts, x_top, x_bot, dts_tmp_label, gef_tmp_label, time_ref=None):
+        if x_top < x_bot:
+            flip_flag = False
+        else:
+            flip_flag = True
+
+        # Fill GEF datastore with x and time coords
+        # Align DTS x
+        if flip_flag:
+            x_slice = slice(x_top, x_bot, -1)
+        else:
+            x_slice = slice(x_top, x_bot)
+
+        dss = dts.sel(x=x_slice)
+
+        if flip_flag:
+            y = dss.x.data - x_slice.start
+        else:
+            y = x_slice.start - dss.x.data
+
+        self.coords['depth_dts'] = ('depth_dts', y, self.depth.attrs)
+
+        if 'time' in dss[dts_tmp_label].dims:
+            assert time_ref
+            time_rel = (dss.time.data - time_ref) / np.timedelta64(1, 'D')
+            time_rel_attrs = {
+                'units':       'days',
+                'description': 'time after start experiment. Timestamp is halfway the '
+                               'aqcuisition'}
+            self.coords['duration'] = ('duration', time_rel, time_rel_attrs)
+            self.coords['time'] = ('duration', dss.time.data, dss.time.attrs)
+
+        # Construct data array for gef datastore
+        btmp_data = dss[dts_tmp_label].data
+        # btmp_var_data = dss[btmp_var_label].data
+        if dss[dts_tmp_label].dims == ('x', 'time'):
+            dims = ('depth_dts', 'duration')
+        elif dss[dts_tmp_label].dims == ('x',):
+            dims = ('depth_dts',)
+        elif dss[dts_tmp_label].dims == ('duration',):
+            dims = ('time',)
+        else:
+            dims = tuple()
+
+        self[gef_tmp_label] = (dims, btmp_data, dss[dts_tmp_label].attrs)
 
 
 def read_gef(fp):
+    """
+    Read a GEF file
+    :param fp: Provide the file path
+    :return: geotechnicalprofile.DataStore
+
+    TODO: Add GEF as yaml to Data_Store object
+    """
+
     attrs = {}
 
     with open(fp, 'rb') as f:
@@ -139,14 +251,14 @@ def read_gef(fp):
     else:
         diepte = 'sondeerlengte'
 
-    dim_col = labels.index(diepte)
-    dim_coord = attrs['maaiveld (m+NAP)'] - X[:, dim_col]
+    icol_diepte = labels.index(diepte)
+    dim_coord = attrs['maaiveld (m+NAP)'] - X[:, icol_diepte]
     coords = {
         'z':     ('depth', dim_coord, {
             'units':       'm+NAP',
             'description': 'Depth w.r.t. reference level',
             'methode':     diepte}),
-        'depth': ('depth', - X[:, dim_col], {
+        'depth': ('depth', - X[:, icol_diepte], {
             'units':       'm+maaiveld',
             'description': 'Depth w.r.t. surface level',
             'methode':     diepte})}
@@ -162,7 +274,7 @@ def read_gef(fp):
     del attrs['STARTDATE']
     del attrs['STARTTIME']
 
-    ds = DataStore(data_vars=data, coords=coords, attrs=attrs)
+    ds = DataStore(geffile=fp, data_vars=data, coords=coords, attrs=attrs)
 
     hydraulic_conductance(ds)
     hydraulic_resistance(ds)
