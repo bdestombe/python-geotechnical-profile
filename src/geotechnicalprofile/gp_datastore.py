@@ -6,7 +6,6 @@ from itertools import cycle
 import numpy as np
 import pandas as pd
 import xarray as xr
-import yaml
 
 from geotechnicalprofile.gef_helpers import fijnedeeltjes
 from geotechnicalprofile.gef_helpers import hydraulic_conductance
@@ -81,7 +80,7 @@ class DataStore(xr.Dataset):
         super(DataStore, self).__init__(*args, **kwargs)
 
         if '_geffile' not in self.attrs:
-            self.attrs['_geffile'] = yaml.dump(None)
+            self.attrs['_geffile'] = ''
 
         self.geffile = geffile
 
@@ -89,32 +88,30 @@ class DataStore(xr.Dataset):
     @property
     def geffile(self):
         """
-        returns the orional gef file
-
-        Parameters
-        ----------
-        geffile : dict
-            geffile are defined in a dictionary with its keywords of the names of the reference
-            temperature time series. Its values are lists of slice objects, where each slice object
-            is a stretch.
-        Returns
-        -------
-
+        returns the orional gef file as a string
         """
         assert hasattr(self, '_geffile'), 'first set the geffile'
-        return yaml.load(self.attrs['_geffile'])
+        return self.attrs['_geffile']
 
     @geffile.setter
     def geffile(self, geffile):
-        with open(geffile, 'rb') as infile:
-            s = str(infile.readlines())
+        """geffile can be a filepath or a filehandle"""
 
-        self.attrs['_geffile'] = yaml.dump(s)
+        if not hasattr(geffile, 'read'):
+            # geffile is a filepath
+            with open(geffile, 'rb') as infile:
+                s = str(infile.read(), 'ASCII', 'ignore')
+
+        else:
+            # GEF file is already a open filehandle
+            s = str(geffile.read(), 'ASCII', 'ignore')
+
+        self.attrs['_geffile'] = s
         pass
 
     @geffile.deleter
     def geffile(self):
-        self.geffile = None
+        self.geffile = ''
         pass
 
     # noinspection PyIncorrectDocstring
@@ -122,8 +119,8 @@ class DataStore(xr.Dataset):
     def geffilehandle(self):
         """Returns a filehandle of the geffile"""
         assert hasattr(self, '_geffile'), 'first set the geffile'
-        s = yaml.load(self.attrs['_geffile'])
-        fh = tempfile.TemporaryFile()
+        s = self.attrs['_geffile']
+        fh = tempfile.TemporaryFile(mode='r+b')
         fh.write(s.encode())
         fh.seek(0)
         return fh
@@ -189,23 +186,32 @@ def read_gef(fp):
     :param fp: Provide the file path
     :return: geotechnicalprofile.DataStore
 
-    TODO: Add GEF as yaml to Data_Store object
+    TODO: put read_gef in the init. reading self.geffilehandle
     """
+    def read_raw_file(attrs, f):
+        """Internal function to read the raw content of the GEF file. attrs is updated in the
+        while loop"""
 
-    attrs = {}
-
-    with open(fp, 'rb') as f:
         s = str(f.readline(), 'ASCII')
         key_val(s, k='GEFID', v=supported_version, dtyped=dtyped, out=attrs)
-
         while True:
             s = str(f.readline(), 'ASCII', 'ignore')
             if s[1:4] == 'EOH':  # End of header
                 break
 
             key_val(s, dtyped=dtyped, out=attrs)
-
         X = np.loadtxt(f)
+        return X
+
+    attrs = {}
+
+    if not hasattr(fp, 'read'):
+        with open(fp, 'rb') as f:
+            X = read_raw_file(attrs, f)
+
+    else:
+        X = read_raw_file(attrs, fp)
+
     del attrs['DATAFORMAT']
     del attrs['OS']
 
