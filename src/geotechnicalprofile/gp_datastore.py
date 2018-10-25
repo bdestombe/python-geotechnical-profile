@@ -291,7 +291,7 @@ class DataStore(xr.Dataset):
             axs[axi_temp].xaxis.set_minor_locator(MultipleLocator(1))
             axs[axi_temp].set_ylim(zlim)
             axs[axi_temp].set_xlim(templim)
-            axs[axi_temp].set_xlabel('Background temperature ($^\circ$C)')
+            axs[axi_temp].set_xlabel(r'Background temperature ($^\circ$C)')
 
         f.tight_layout()
         return f
