@@ -24,7 +24,7 @@ def read(*names, **kwargs):
 
 setup(
     name='geotechnicalprofile',
-    version='0.1.0',
+    version='0.2.0',
     license='BSD 3-Clause License',
     description='Load, manage, and plot geotechnical data, including GEF and DTS measurements',
     long_description='%s\n%s' % (
