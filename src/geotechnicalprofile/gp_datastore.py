@@ -32,6 +32,7 @@ dtyped = {
     }
 
 
+
 class DataStore(xr.Dataset):
     """The data class that stores the measurements. The user should never initiate this class
     directly, but use read_xml_dir or open_datastore functions instead.
@@ -96,12 +97,15 @@ class DataStore(xr.Dataset):
 
     @geffile.setter
     def geffile(self, geffile):
-        """geffile can be a filepath or a filehandle"""
+        """geffile can be a filepath or a filehandle or None"""
 
-        if not hasattr(geffile, 'read'):
+        if not hasattr(geffile, 'read') and geffile:
             # geffile is a filepath
             with open(geffile, 'rb') as infile:
                 s = str(infile.read(), 'ASCII', 'ignore')
+
+        elif not geffile:
+            s = ''
 
         else:
             # GEF file is already a open filehandle
@@ -134,7 +138,8 @@ class DataStore(xr.Dataset):
     def geffile(self):
         del self.geffile
 
-    def add_dts(self, dts, x_top, x_bot, dts_tmp_label, gef_tmp_label, time_ref=None):
+    def add_dts(self, dts, x_top, x_bot, dts_tmp_label, gef_tmp_label, time_ref=None,
+                depth_coords='depth_dts'):
         if x_top < x_bot:
             flip_flag = False
         else:
@@ -154,10 +159,13 @@ class DataStore(xr.Dataset):
         else:
             y = x_slice.start - dss.x.data
 
-        self.coords['depth_dts'] = ('depth_dts', y, self.depth.attrs)
+        self.coords[depth_coords] = (depth_coords, y, self.depth.attrs)
 
         if 'time' in dss[dts_tmp_label].dims:
             assert time_ref
+            if isinstance(time_ref, str):
+                time_ref = np.datetime64(time_ref)
+
             time_rel = (dss.time.data - time_ref) / np.timedelta64(1, 'D')
             time_rel_attrs = {
                 'units':       'days',
@@ -168,17 +176,127 @@ class DataStore(xr.Dataset):
 
         # Construct data array for gef datastore
         btmp_data = dss[dts_tmp_label].data
-        # btmp_var_data = dss[btmp_var_label].data
+
         if dss[dts_tmp_label].dims == ('x', 'time'):
-            dims = ('depth_dts', 'duration')
+            dims = (depth_coords, 'duration')
         elif dss[dts_tmp_label].dims == ('x',):
-            dims = ('depth_dts',)
+            dims = (depth_coords,)
         elif dss[dts_tmp_label].dims == ('duration',):
             dims = ('time',)
         else:
             dims = tuple()
 
         self[gef_tmp_label] = (dims, btmp_data, dss[dts_tmp_label].attrs)
+
+    def plot(self, labels=None, xlims=None, ylim=None, ylabel=None, xlabels=None,
+             q_label=None, q_conf_bound=False, q_xlim=None, title=None, temp_label=None,
+             templim=None):
+
+        import matplotlib.pyplot as plt
+        from matplotlib.ticker import MultipleLocator
+        import numpy as np
+
+        zlim = [-50, 2]
+        axn = len(xlims) + bool(q_label) + bool(temp_label)
+        axi_q = axn - 1
+        axi_temp = axn - 2
+
+        f, axs = plt.subplots(1, axn, figsize=(16.53, 11.69), dpi=100)
+
+        if title:
+            f.suptitle(title + ': ' + ' - '.join(self.PROJECTID + [self.TESTID, self.dts_t0_stamp]))
+
+        else:
+            f.suptitle(' - '.join(self.PROJECTID + [self.TESTID, self.dts_t0_stamp]))
+
+        mv = self.attrs['maaiveld (m+NAP)']
+
+        for plot_lab, ax in zip(labels, axs):
+            if plot_lab not in self:
+                ax.set_xlabel(plot_lab)
+                ax.set_xlim(xlims[plot_lab])
+                ax.set_ylim(zlim)
+                ax.yaxis.set_ticks(np.arange(zlim[0], zlim[1], 5.))
+                ax.minorticks_on()
+                ax.tick_params(axis='y', which='minor', direction='out')
+                ax.xaxis.set_minor_locator(MultipleLocator(1))
+                ax.grid(which='minor', linewidth=0.3, c='lightgrey')
+                ax.grid(which='major', linewidth=0.4, c='grey')
+                continue
+
+            print('about to print', plot_lab, 'to', ax)
+            y = self.depth.data + mv
+            x = self[plot_lab].data
+            ax.plot(x, y, linewidth=0.5, c='black')
+
+            # swap_axes(ax)
+            ax.yaxis.set_ticks(np.arange(zlim[0], zlim[1], 5.))
+            ax.minorticks_on()
+            ax.tick_params(axis='y', which='minor', direction='out')
+            ax.tick_params(axis='x', which='minor', bottom='off')
+            ax.xaxis.set_minor_locator(MultipleLocator(1))
+            ax.grid(which='minor', linewidth=0.3, c='lightgrey', axis='y')
+            ax.grid(which='major', linewidth=0.4, c='grey')
+            ax.set_xlim(xlims[plot_lab])
+            ax.set_ylim(zlim)
+            ax.set_ylabel('')
+            xlabel = plot_lab + ' (' + self[plot_lab].units + ')'
+            ax.set_xlabel(xlabel)
+            ax.axhline(y=mv, linestyle='--', linewidth=0.6, c='black')
+
+        axs[0].set_ylabel(r'$z$ (m+NAP)')
+
+        if q_label:
+            axs[axi_q].grid(which='minor', linewidth=0.3, c='lightgrey')
+            axs[axi_q].grid(which='major', linewidth=0.4, c='grey')
+            axs[axi_q].axhline(y=mv, linestyle='--', linewidth=0.6, c='black')
+
+            y = self[q_label].depth_dts.data + mv
+            q50 = self[q_label].data
+
+            if q_conf_bound:
+                qll = q_label + q_conf_bound[0]
+                qlu = q_label + q_conf_bound[1]
+
+                ql = self[qll].data
+                qu = self[qlu].data
+
+                axs[axi_q].fill_betweenx(y, ql, qu, label='95% confidence interval',
+                                         facecolor='cyan',
+                                         linestyle='None')
+            axs[axi_q].plot(q50, y, linewidth=0.5, label=q_label, c='black')
+
+            axs[axi_q].yaxis.set_ticks(np.arange(zlim[0], zlim[1], 5))
+            axs[axi_q].minorticks_on()
+            axs[axi_q].tick_params(axis='y', which='minor', direction='out')
+            axs[axi_q].tick_params(axis='x', which='minor', bottom='off')
+            axs[axi_q].xaxis.set_minor_locator(MultipleLocator(1))
+            axs[axi_q].set_ylim(zlim)
+            axs[axi_q].set_xlim(q_xlim)
+            axs[axi_q].set_xlabel('Specific discharge (m/day)')
+            axs[axi_q].legend(fontsize='small')
+
+        if temp_label:
+            axs[axi_temp].grid(which='minor', linewidth=0.3, c='lightgrey')
+            axs[axi_temp].grid(which='major', linewidth=0.4, c='grey')
+            axs[axi_temp].axhline(y=mv, linestyle='--', linewidth=0.6, c='black')
+
+            y = self[temp_label].depth_dts.data + mv
+            btmp = self[temp_label].data
+            axs[axi_temp].plot(btmp, y, linewidth=0.5, label=temp_label, c='black')
+
+            axs[axi_temp].yaxis.set_ticks(np.arange(zlim[0], zlim[1], 5))
+            axs[axi_temp].minorticks_on()
+            axs[axi_temp].tick_params(axis='y', which='minor', direction='out')
+            axs[axi_temp].tick_params(axis='x', which='minor', bottom='off')
+            axs[axi_temp].xaxis.set_minor_locator(MultipleLocator(1))
+            axs[axi_temp].set_ylim(zlim)
+            axs[axi_temp].set_xlim(templim)
+            axs[axi_temp].set_xlabel('Background temperature ($^\circ$C)')
+
+        f.tight_layout()
+        return f
+
 
 
 def open_datastore(filename_or_obj, group=None, decode_cf=True,
