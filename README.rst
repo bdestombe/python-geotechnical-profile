@@ -62,6 +62,9 @@ Installation
 
     pip install geotechnicalprofile
 
+Current version on pip is v0.1.0 . This is probably several commits behind this repository. Pip
+install directly from github to obtain the most recent changes.
+
 Learn by examples
 =================
 Interactively run the example notebooks online by clicking the launch-binder button.
