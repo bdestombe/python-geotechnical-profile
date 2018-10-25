@@ -32,7 +32,6 @@ dtyped = {
     }
 
 
-
 class DataStore(xr.Dataset):
     """The data class that stores the measurements. The user should never initiate this class
     directly, but use read_xml_dir or open_datastore functions instead.
@@ -296,7 +295,6 @@ class DataStore(xr.Dataset):
 
         f.tight_layout()
         return f
-
 
 
 def open_datastore(filename_or_obj, group=None, decode_cf=True,
