@@ -187,7 +187,7 @@ class DataStore(xr.Dataset):
 
         self[gef_tmp_label] = (dims, btmp_data, dss[dts_tmp_label].attrs)
 
-    def plot(self, labels=None, xlims=None, ylim=None, ylabel=None, xlabels=None,
+    def plot(self, labels=None, xlims=None, zlim=None, ylabel=None, xlabels=None,
              q_label=None, q_conf_bound=False, q_xlim=None, title=None, temp_label=None,
              templim=None):
 
@@ -195,10 +195,12 @@ class DataStore(xr.Dataset):
         from matplotlib.ticker import MultipleLocator
         import numpy as np
 
-        zlim = [-50, 2]
+        if zlim is None:
+            zlim = [-50, 2]
+
         axn = len(xlims) + bool(q_label) + bool(temp_label)
         axi_q = axn - 1
-        axi_temp = axn - 2
+        axi_temp = axn - 1 - bool(q_label)
 
         f, axs = plt.subplots(1, axn, figsize=(16.53, 11.69), dpi=100)
 
