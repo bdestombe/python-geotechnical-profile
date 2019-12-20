@@ -39,7 +39,7 @@ class DataStore(xr.Dataset):
         Parameters
         ----------
         data_vars : dict-like, optional
-            A mapping from variable names to :py:class:`~xarray.DataArray`
+            A mapping from variable names to :py:class:`~xarray.ds`
             objects, :py:class:`~xarray.Variable` objects or tuples of the
             form ``(dims, data[, attrs])`` which can be used as arguments to
             create a new ``Variable``. Each dimension must have the same length
@@ -508,7 +508,6 @@ def read_gef(fp):
 
     return ds
 
-
 def key_val(s, k=None, v=None, dtyped=None, out=None):
     s2 = s.split(sep='= ')
     s2_k = s2[0][1:]
@@ -558,3 +557,111 @@ def key_val(s, k=None, v=None, dtyped=None, out=None):
 
     else:
         return s2_k, s2_v
+
+def read_gef_dsp(fp):
+    """
+    Read a GEF file
+    :param fp: Provide the file path
+    :return: geotechnicalprofile.DataStore
+
+    TODO: put read_gef in the init. reading self.geffilehandle
+    """
+    def read_raw_file(attrs, f):
+        """Internal function to read the raw content of the GEF file. attrs is updated in the
+        while loop"""
+
+        s = str(f.readline(), 'ASCII')
+        key_val(s, k='GEFID', v=supported_version, dtyped=dtyped, out=attrs)
+        while True:
+            s = str(f.readline(), 'ASCII', 'ignore')
+            if s[1:4] == 'EOH':  # End of header
+                break
+
+            key_val(s, dtyped=dtyped, out=attrs)
+        X = np.loadtxt(f)
+        return X
+
+    attrs = {}
+
+    if not hasattr(fp, 'read'):
+        with open(fp, 'rb') as f:
+            X = read_raw_file(attrs, f)
+
+    else:
+        X = read_raw_file(attrs, fp)
+
+    del attrs['DATAFORMAT']
+    del attrs['OS']
+
+    assert X.shape == (attrs['LASTSCAN'], attrs['COLUMN'])
+    del attrs['LASTSCAN']
+    del attrs['COLUMN']
+
+    for col_info in attrs['COLUMNVOID']:
+        mask = np.isclose(X[:, col_info[0] - 1], col_info[1])
+        X[mask, col_info[0] - 1] = np.nan
+    del attrs['COLUMNVOID']
+
+    attrs['x (m)'] = attrs['XYID'][1]
+    attrs['y (m)'] = attrs['XYID'][2]
+    assert attrs['XYID'][0] == 31000  # ensure it is RDS
+    del attrs['XYID']
+
+    attrs['maaiveld (m+NAP)'] = attrs['ZID'][1]
+    assert attrs['ZID'][0] == 31000  # ensure it is NAP
+    del attrs['ZID']
+
+    for item in attrs['MEASUREMENTVAR']:
+        key = item[3] + ' (' + item[2] + ')'
+        attrs[key] = item[1]
+
+    del attrs['MEASUREMENTVAR']
+
+    for item in attrs['MEASUREMENTTEXT']:
+        key = item[2] + ' (' + item[0] + ')'
+        attrs[key] = item[1]
+
+    del attrs['MEASUREMENTTEXT']
+    
+
+#    labels = [item[2] for item in attrs['COLUMNINFO']]
+    for item in attrs['COLUMNINFO']:
+        if item[2] == 'Waterdruk schouder':
+            labels = ['tijd', 'puntdruk', 'waterdruk_schouder']
+        else: labels = [item[2] for item in attrs['COLUMNINFO']]
+    units = [item[1] for item in attrs['COLUMNINFO']]
+    del attrs['COLUMNINFO']
+
+#    hellingsmeter_aanwezig = 'gecorrigeerde diepte' in labels
+#
+#    if hellingsmeter_aanwezig:
+#        diepte = 'gecorrigeerde diepte'
+#
+#    else:
+#        diepte = 'sondeerlengte'
+#
+#    icol_diepte = labels.index(diepte)
+#    dim_coord = attrs['maaiveld (m+NAP)'] - X[:, icol_diepte]
+#    coords = {
+#        'z':     ('depth', dim_coord, {
+#            'units':       'm+NAP',
+#            'description': 'Depth w.r.t. reference level',
+#            'methode':     diepte}),
+#        'depth': ('depth', - X[:, icol_diepte], {
+#            'units':       'm+maaiveld',
+#            'description': 'Depth w.r.t. surface level',
+#            'methode':     diepte})}
+
+    data = {}
+    for label, unit, x_item in zip(labels, units, X.T):
+        data[label.lower()] = (r'depth', x_item, {
+            'units': unit})
+
+    _date = attrs['STARTDATE'] + attrs['STARTTIME']
+    date = [int(item) for item in _date]
+    attrs['date'] = str(pd.to_datetime(dt(*date), utc=True))
+    del attrs['STARTDATE']
+    del attrs['STARTTIME']
+
+    ds = DataStore(geffile=fp, data_vars=data, attrs=attrs)
+    return ds
